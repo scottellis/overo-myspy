@@ -17,41 +17,7 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  
- 
-  Loosely based on the spidev.c driver under linux devices.
-  Does a few things different while trying to simplify. 
-  
-  Some differences.
- 
-  1. Uses the dynamic spi configuration functions spi_alloc_device()
-     and spi_add_device(). Makes it easier to get started not having
-     to modify a board file. 
-
-     I am not sure how tested this dynamic interface is, but it's too 
-     convenient to pass up. Nothing exploded yet.
-
-     The driver still requires the spi master controller omap2_mcspi loaded 
-     either static or dynamic. It will nag if not found.
-  
-  2. No classes for simplicity.
-
-  3. Full-duplex transfers
-   
-  4. Creates a char device with only open and write implemented. It's just
-     for testing so do whatever the heck you want in the write function. 
-     It's where I'm putting all my test code.
-     
-  5. You do have to create the /dev/myspy char device file after each boot.
-     When the driver loads it will tell you the major,minor.
- 
-  6. Lots of debug to the console.
-
-  7. Careful about calling spi_put_device on a spi_device after spi_alloc_device() 
-     if for some reason you choose not to add it. There was some bad code in
-     omap2_mcspi_cleanup(). I submitted a patch to the kernel mailing list. I'll
-     probably send one over to the gumstix guys in the interim. 
-
- */
+*/
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -202,7 +168,7 @@ static int myspy_open(struct inode *inode, struct file *filp)
 		myspy_data.rx_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
 	
 		if (!myspy_data.rx_buff) {
-			printk(KERN_ALERT "myspy_open() failed to alloc rx_buff\n");
+			printk(KERN_ALERT "myspy_open() failed ito alloc rx_buff\n");
 			return -ENOMEM;
 		}
 	}

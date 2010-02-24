@@ -1,0 +1,41 @@
+A minimal driver to get started testing SPI devices with Gumstix Overos.
+
+Based on the spidev.c driver under linux devices.
+
+Does a few things different while trying to simplify. 
+  
+Some differences.
+ 
+1. Uses the dynamic spi configuration functions spi_alloc_device()
+   and spi_add_device(). Makes it easier to get started not having
+   to modify a board file. 
+
+   I am not sure how tested this dynamic interface is, but it's too 
+   convenient to pass up. Nothing exploded yet.
+
+   The driver still requires the spi master controller omap2_mcspi loaded 
+   either static or dynamic. It will nag if not found. You don't need
+   any of the ADS7846 code in board-overo.c though.
+  
+2. No classes for simplicity.
+
+3. Full-duplex transfers. Only full-duplex, but that's only because
+   that's what I'm working on now. Easy to change.
+   
+4. It's a char device with only open and write implemented. It's just
+   for testing so it's where I'm putting all my test code.
+     
+5. You do have to create the /dev/myspy char device file after each boot.
+   When the driver loads it will tell you the major,minor.
+ 
+6. Lots of debug to the console.
+
+7. Careful about calling spi_put_device on a spi_device after spi_alloc_device() 
+   if for some reason you choose not to add it. There was some bad code in
+   omap2_mcspi_cleanup(). I submitted a patch to the kernel mailing list. I'll
+   probably send one over to the gumstix guys in the interim. 
+
+8. If you don't have an build environment setup, use the source-me.txt to
+   use the OE one. You might have to change the KERNELDIR var. After that
+   the Makefile should just work. 
+
