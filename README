@@ -35,7 +35,15 @@ Some differences.
    omap2_mcspi_cleanup(). I submitted a patch to the kernel mailing list. I'll
    probably send one over to the gumstix guys in the interim. 
 
-8. If you don't have an build environment setup, use the source-me.txt to
+8. If you don't have a build environment setup, use the source-me.txt to
    use the OE one. You might have to change the KERNELDIR var. After that
    the Makefile should just work. 
 
+
+I just did this as an experiment. I haven't needed to do any SPI work for real 
+with a Gumstix. I just wanted to see what it would entail. My only testing so 
+far has consisted of watching signal analyzer. Expect lots of refinements as
+I continue to play around.
+
+I'd appreciate any feedback.
+  
