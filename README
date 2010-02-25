@@ -14,8 +14,7 @@ Some differences.
    convenient to pass up. Nothing exploded yet.
 
    The driver still requires the spi master controller omap2_mcspi loaded 
-   either static or dynamic. It will nag if not found. You don't need
-   any of the ADS7846 code in board-overo.c though.
+   either static or dynamic. It will nag if not found. 
   
 2. No classes for simplicity.
 
