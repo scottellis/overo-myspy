@@ -1,6 +1,7 @@
-A minimal driver to get started testing SPI devices with Gumstix Overos.
+A minimal driver to start experimenting with SPI devices using a 
+Gumstix Overo.
 
-Based on the spidev.c driver under linux devices.
+Based on the spidev.c driver distributed with Linux. 
 
 Does a few things different while trying to simplify. 
   
@@ -22,28 +23,34 @@ Some differences.
    that's what I'm working on now. Easy to change.
    
 4. It's a char device with only open and write implemented. It's just
-   for testing so it's where I'm putting all my test code.
+   for testing so myspy_write() is where I'm putting all my test code.
      
 5. You do have to create the /dev/myspy char device file after each boot.
    When the driver loads it will tell you the major,minor.
  
-6. Lots of debug to the console.
+6. All the output is via printk(KERN_ALERT) 
 
 7. Careful about calling spi_put_device on a spi_device after spi_alloc_device() 
-   if for some reason you choose not to add it. There was some bad code in
-   omap2_mcspi_cleanup(). I submitted a patch to the kernel mailing list. I'll
-   probably send one over to the gumstix guys in the interim. 
+   if for some reason you choose not to add it. There was some NULL dereferences 
+   in omap2_mcspi_cleanup(). The kernel folks took a patch I submitted.
 
 8. If you don't have a build environment setup, use the source-me.txt to
    use the OE one. You might have to change the KERNELDIR var. After that
    the Makefile should just work. 
 
 
-This is just an experiment. I haven't needed SPI with a Gumstix yet, but I'm
-sure it will happen. I was just curious as to what it would entail. 
+This is just an experiment for testing. I haven't needed SPI with a Gumstix,
+but I'm sure it will happen. 
 
-The only testing so far has been with a signal analyzer. It appears to work.
-Expect changes when I start testing with some different devices.   
+I only have one type of device available for testing right now, a MCP23S17 
+I/O expander. The test code in myspy_write() is for that device. Things are 
+working as expected and the blinking lights are all behaving.
 
-I'd appreciate any feedback.
+I did some testing with bigger frames, greater then 7 which triggers the
+DMA code in omap2_mcspi rather then the PIO mode. I always get errors from
+the omap2_mcspi driver on the last rx byte regardless of length. The data 
+looks good on the signal analyzer though. Need to dig into the omap2_mcspi 
+code and figure this out. Frames smaller then 8 bytes work okay though.
+ 
+Feedback welcome.
   
