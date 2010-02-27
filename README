@@ -11,13 +11,10 @@ Some differences.
    and spi_add_device(). Makes it easier to get started not having
    to modify a board file. 
 
-   I am not sure how tested this dynamic interface is, but it's too 
-   convenient to pass up. Nothing exploded yet.
-
    The driver still requires the spi master controller omap2_mcspi loaded 
    either static or dynamic. It will nag if not found. 
   
-2. No classes for simplicity.
+2. No classes
 
 3. Full-duplex transfers. Only full-duplex, but that's only because
    that's what I'm working on now. Easy to change.
@@ -32,10 +29,10 @@ Some differences.
 
 7. Careful about calling spi_put_device on a spi_device after spi_alloc_device() 
    if for some reason you choose not to add it. There was some NULL dereferences 
-   in omap2_mcspi_cleanup(). The kernel folks took a patch I submitted.
+   in omap2_mcspi_cleanup(). A patch was submitted and accepted.
 
-8. If you don't have a build environment setup, use the source-me.txt to
-   use the OE one. You might have to change the KERNELDIR var. After that
+8. If you don't have a build environment setup, use the source-me.txt to use
+   the OE cross-tools. You might have to change the KERNELDIR var. After that
    the Makefile should just work. 
 
 
