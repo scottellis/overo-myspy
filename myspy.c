@@ -260,7 +260,27 @@ static int __init add_myspy_to_bus(void)
 	spi_device = spi_alloc_device(spi_master);
 
 	if (spi_device) {
-		spi_device->chip_select = 0;
+		printk(KERN_ALERT "spi_alloc_device() failed\n");
+		status = -1;
+		goto add_myspy_done;
+	}
+
+	/* choose your chip select */
+	spi_device->chip_select = 0;
+
+	/* first check if the bus already knows about us */
+	snprintf(buff, sizeof(buff), "%s.%u", dev_name(&spi_device->master->dev),
+			spi_device->chip_select);
+
+	if (bus_find_device_by_name(spi_device->dev.bus, NULL, buff)) {
+		/* 
+		We are already registered, nothing to do, just free
+		the spi_device. Crashes without a patched 
+		omap2_mcspi_cleanup() 
+		*/
+		spi_dev_put(spi_device);
+		status = 0;
+	} else {
 		spi_device->max_speed_hz = 100000;
 		spi_device->mode = SPI_MODE_0;
 		spi_device->bits_per_word = 8;
@@ -269,30 +289,15 @@ static int __init add_myspy_to_bus(void)
 		spi_device->controller_data = NULL;
 		strlcpy(spi_device->modalias, "myspy", SPI_NAME_SIZE);
 
-		/* first check if the bus already knows about us */
-		snprintf(buff, sizeof(buff), "%s.%u", dev_name(&spi_device->master->dev),
-			spi_device->chip_select);
-
-		if (bus_find_device_by_name(spi_device->dev.bus, NULL, buff)) {
-			/* it does, then just call spi_setup() */
-			printk(KERN_ALERT "calling spi_setup()\n");
-			status = spi_setup(spi_device);
-		}
-		else {
-			printk(KERN_ALERT "calling spi_add_device()\n");
-			status = spi_add_device(spi_device);
-		}
-
+		status = spi_add_device(spi_device);
 		if (status < 0) {	
-			/* this will crash you unless you have patched omap2_mcspi_cleanup() */	
+			/* crashes without a patched omap2_mcspi_cleanup() */	
 			spi_dev_put(spi_device);
 			printk(KERN_ALERT "spi_add_device() failed: %d\n", status);		
 		}	
 	}
-	else {
-		status = -1;
-		printk(KERN_ALERT "spi_alloc_device() failed\n");
-	}
+
+add_myspy_done:
 
 	put_device(&spi_master->dev);
 
