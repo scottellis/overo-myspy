@@ -1,47 +1,27 @@
 A minimal driver to start experimenting with SPI devices using a 
 Gumstix Overo.
 
-Based on the spidev.c driver distributed with Linux. 
-
-Does a few things different while trying to simplify. 
-  
-Some differences.
- 
 1. Uses the dynamic spi configuration functions spi_alloc_device()
    and spi_add_device(). Makes it easier to get started not having
    to modify a board file. 
 
    The driver still requires the spi master controller omap2_mcspi loaded 
    either static or dynamic. It will nag if not found. 
-  
-2. No classes
 
-3. Full-duplex transfers. Only full-duplex, but that's only because
-   that's what I'm working on now. Easy to change.
+2. Implements full-duplex synchronous transfers. 
    
-4. It's a char device with only open and write implemented. It's just
+3. It's a char device with only open and write implemented. It's just
    for testing so myspy_write() is where I'm putting all my test code.
-     
-5. You do have to create the /dev/myspy char device file after each boot.
-   When the driver loads it will tell you the major,minor.
  
-6. All the output is via printk(KERN_ALERT) 
+4. All the output is via printk(KERN_ALERT) 
 
-7. Careful about calling spi_put_device on a spi_device after spi_alloc_device() 
-   if for some reason you choose not to add it. There was some NULL dereferences 
-   in omap2_mcspi_cleanup(). A patch was submitted and accepted.
+5. You'll need the patches to omap2_mcspi included in the project or
+   the dynamic adding of the myspy spi device will fail.  
 
-8. If you don't have a build environment setup, use the source-me.txt to use
+6. If you don't have a build environment setup, use the source-me.txt to use
    the OE cross-tools. You might have to change the KERNELDIR var. After that
    the Makefile should just work. 
 
-
-This is just an experiment for testing. I haven't needed SPI with a Gumstix,
-but I'm sure it will happen. 
-
-I only have one type of device available for testing right now, a MCP23S17 
-I/O expander. The test code in myspy_write() is for that device. Things are 
-working as expected and the blinking lights are all behaving.
 
 I did some testing with bigger frames, greater then 7 which triggers the
 DMA code in omap2_mcspi rather then the PIO mode. I always get errors from
