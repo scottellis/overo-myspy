@@ -14,7 +14,7 @@ endif
 
 
 clean:
-	rm -rf *.ko *.o *.mod.c modules.order Module.symvers .myspy* .tmp_versions
+	rm -rf *~ *.ko *.o *.mod.c modules.order Module.symvers .myspy* .tmp_versions
 
 endif
 
