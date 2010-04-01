@@ -44,9 +44,10 @@ MODULE_PARM_DESC(bus_speed, "SPI bus speed in Hz");
 
 struct myspy_dev {
 	dev_t devt;
-	struct cdev cdev;
 	spinlock_t spi_lock;
 	struct semaphore sem;
+	struct cdev cdev;
+	struct class *class;
 	struct spi_device *spi_device;	
 	u8 *rx_buff;
 	u8 *tx_buff;
@@ -104,6 +105,19 @@ static ssize_t myspy_sync_write(size_t len)
 	return myspy_sync(&m);
 }
 
+/*
+  Implements a synchronous SPI operation. 
+  You special sauce goes here.
+
+  I'm just playing with a I/O expander that implements a write before read
+  protocol when you want to do reads. So when we want to read two bytes,
+  we actually have to clock 4 bytes, two bytes for the write to tell it
+  which register and two bytes to receive the data. 
+  Writes to this device are straightforward.
+
+  If you are just using this code for reference, you'll want to replace 
+  everything   in this function with the logic for your own device.
+*/
 #define DEVICE_ADDRESS 0x20
 #define ADDRESS_SHIFT 0x01
 #define READ_BIT 0x01
@@ -135,40 +149,46 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 
 	myspy_dev.tx_buff[0] = DEVICE_ADDRESS << ADDRESS_SHIFT;
 
-	if (!strncmp(myspy_dev.user_buff, "read-config", strlen("read-config"))) {
+	if (!strncmp(myspy_dev.user_buff, "read-config", 
+					strlen("read-config"))) {
 		myspy_dev.tx_buff[0] |= READ_BIT;
 		myspy_dev.tx_buff[1] = IODIRA;		
 		tx_len = 4;
 		rx_len = 2;
 	}
-	else if (!strncmp(myspy_dev.user_buff, "set-config-out", strlen("set-config-out"))) {
+	else if (!strncmp(myspy_dev.user_buff, "set-config-out", 
+					strlen("set-config-out"))) {
 		myspy_dev.tx_buff[1] = IODIRA;
 		myspy_dev.tx_buff[2] = 0x00;
 		myspy_dev.tx_buff[3] = 0x00;
 		tx_len = 4;
 		rx_len = 0;
 	}
-	else if (!strncmp(myspy_dev.user_buff, "set-config-in", strlen("set-config-in"))) {
+	else if (!strncmp(myspy_dev.user_buff, "set-config-in", 
+					strlen("set-config-in"))) {
 		myspy_dev.tx_buff[1] = IODIRA;
 		myspy_dev.tx_buff[2] = 0xff;
 		myspy_dev.tx_buff[3] = 0xff;
 		tx_len = 4;
 		rx_len = 0;
 	}
-	else if (!strncmp(myspy_dev.user_buff, "read-io", strlen("read-io"))) {
+	else if (!strncmp(myspy_dev.user_buff, "read-io", 
+					strlen("read-io"))) {
 		myspy_dev.tx_buff[0] |= READ_BIT;
 		myspy_dev.tx_buff[1] = GPIOA;
 		tx_len = 4;
 		rx_len = 2;		
 	}
-	else if (!strncmp(myspy_dev.user_buff, "write-io-on", strlen("write-io-on"))) {
+	else if (!strncmp(myspy_dev.user_buff, "write-io-on", 
+					strlen("write-io-on"))) {
 		myspy_dev.tx_buff[1] = GPIOA;
 		myspy_dev.tx_buff[2] = 0xff;
 		myspy_dev.tx_buff[3] = 0xff;
 		tx_len = 4;
 		rx_len = 0;		
 	}
-	else if (!strncmp(myspy_dev.user_buff, "write-io-off", strlen("write-io-off"))) {
+	else if (!strncmp(myspy_dev.user_buff, "write-io-off", 
+					strlen("write-io-off"))) {
 		myspy_dev.tx_buff[1] = GPIOA;
 		myspy_dev.tx_buff[2] = 0x00;
 		myspy_dev.tx_buff[3] = 0x00;
@@ -185,7 +205,8 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 		status = myspy_sync_write(tx_len);
 
 		if (status != tx_len) 
-			printk(KERN_ALERT "myspy_sync_write(%d) returned %d\n", tx_len, status);
+			printk(KERN_ALERT "myspy_sync_write(%d) returned %d\n", 
+				tx_len, status);
 		
 		if (rx_len > 0) 
 			printk(KERN_ALERT "rx_buff: %02X %02X\n",
@@ -324,7 +345,7 @@ static struct spi_driver myspy_spi = {
 	.remove =	__devexit_p(myspy_remove),	
 };
 
-static int __init myspy_spi_setup(void)
+static int __init myspy_init_spi(void)
 {
 	int error;
 
@@ -349,25 +370,26 @@ static const struct file_operations myspy_fops = {
 	.open =		myspy_open,	
 };
 
-static int __init myspy_cdev_setup(void)
+
+static int __init myspy_init_cdev(void)
 {
 	int error;
 
 	myspy_dev.devt = MKDEV(0, 0);
 
-	if ((error = alloc_chrdev_region(&myspy_dev.devt, 0, 1, "myspy")) < 0) {
-		printk(KERN_ALERT "alloc_chrdev_region() failed: error = %d \n", 
+	error = alloc_chrdev_region(&myspy_dev.devt, 0, 1, "myspy");
+	if (error < 0) {
+		printk(KERN_ALERT "alloc_chrdev_region() failed: %d \n", 
 			error);
 		return -1;
 	}
 
 	cdev_init(&myspy_dev.cdev, &myspy_fops);
 	myspy_dev.cdev.owner = THIS_MODULE;
-	myspy_dev.cdev.ops = &myspy_fops;
-
+	
 	error = cdev_add(&myspy_dev.cdev, myspy_dev.devt, 1);
 	if (error) {
-		printk(KERN_ALERT "cdev_add() failed: error = %d\n", error);
+		printk(KERN_ALERT "cdev_add() failed: %d\n", error);
 		unregister_chrdev_region(myspy_dev.devt, 1);
 		return -1;
 	}	
@@ -375,25 +397,44 @@ static int __init myspy_cdev_setup(void)
 	return 0;
 }
 
+static int __init myspy_init_class(void)
+{
+	myspy_dev.class = class_create(THIS_MODULE, "myspy");
+
+	if (!myspy_dev.class) {
+		printk(KERN_ALERT "class_create() failed\n");
+		return -1;
+	}
+
+	if (!device_create(myspy_dev.class, NULL, myspy_dev.devt, NULL, "myspy")) {
+		printk(KERN_ALERT "device_create(..., myspy) failed\n");
+		class_destroy(myspy_dev.class);
+		return -1;
+	}
+
+	return 0;
+}
 static int __init myspy_init(void)
 {
+	memset(&myspy_dev, 0, sizeof(struct myspy_dev));
+
 	spin_lock_init(&myspy_dev.spi_lock);
 	sema_init(&myspy_dev.sem, 1);
 
-	if (myspy_cdev_setup() < 0) {
-		printk(KERN_ALERT "myspy_cdev_setup() failed\n");
+	if (myspy_init_cdev() < 0) 
 		goto fail_1;
-	}
 	
-	if (myspy_spi_setup() < 0) {
-		printk(KERN_ALERT "myspy_spi_setup() failed\n");
+	if (myspy_init_class() < 0)  
 		goto fail_2;
-	}
 
-	printk(KERN_ALERT "Verify : mknod /dev/myspy c %d %d\n", 
-		MAJOR(myspy_dev.devt), MINOR(myspy_dev.devt));
+	if (myspy_init_spi() < 0) 
+		goto fail_3;
 
 	return 0;
+
+fail_3:
+	device_destroy(myspy_dev.class, myspy_dev.devt);
+	class_destroy(myspy_dev.class);
 
 fail_2:
 	cdev_del(&myspy_dev.cdev);
@@ -406,6 +447,9 @@ fail_1:
 static void __exit myspy_exit(void)
 {
 	spi_unregister_driver(&myspy_spi);
+
+	device_destroy(myspy_dev.class, myspy_dev.devt);
+	class_destroy(myspy_dev.class);
 
 	cdev_del(&myspy_dev.cdev);
 	unregister_chrdev_region(myspy_dev.devt, 1);
