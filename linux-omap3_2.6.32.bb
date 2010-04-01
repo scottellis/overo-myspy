@@ -18,7 +18,6 @@ SRC_URI = "git://www.sakoman.com/git/linux-omap-2.6.git;branch=omap3-2.6.32;prot
           "
 
 SRC_URI_append = " \
-           file://no-dss.patch;patch=1 \
            file://1-omap2-mcspi-cleanup-null-ref.patch;patch=1 \
            file://2-omap2-mcspi-use-transfer-speed-override.patch;patch=1 \
            "
