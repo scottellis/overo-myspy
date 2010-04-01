@@ -26,7 +26,6 @@
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/errno.h>
-#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/smp_lock.h>
 #include <linux/cdev.h>
@@ -47,8 +46,8 @@ struct myspy_dev {
 	dev_t devt;
 	struct cdev cdev;
 	spinlock_t spi_lock;
-	struct spi_device *spi_device;
-	struct mutex buf_lock;
+	struct semaphore sem;
+	struct spi_device *spi_device;	
 	u8 *rx_buff;
 	u8 *tx_buff;
 	char *user_buff;
@@ -119,12 +118,13 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 	if (count > 32)
 		return -EMSGSIZE;
 
-	mutex_lock(&myspy_dev.buf_lock);
+	if (down_interruptible(&myspy_dev.sem)) 
+		return -ERESTARTSYS;
 
 	memset(myspy_dev.user_buff, 0, SPI_BUFF_SIZE);
 
 	if (copy_from_user(myspy_dev.user_buff, buf, count)) {
-		mutex_unlock(&myspy_dev.buf_lock);
+		up(&myspy_dev.sem);
 		return -EFAULT;
 	}
 
@@ -192,7 +192,7 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 				myspy_dev.rx_buff[2], myspy_dev.rx_buff[3]);
 	}
 
-	mutex_unlock(&myspy_dev.buf_lock);
+	up(&myspy_dev.sem);
 
 	return count;
 }
@@ -201,7 +201,8 @@ static int myspy_open(struct inode *inode, struct file *filp)
 {	
 	int status = 0;
 
-	mutex_lock(&myspy_dev.buf_lock);
+	if (down_interruptible(&myspy_dev.sem))
+		return -ERESTARTSYS;
 
 	if (!myspy_dev.tx_buff) {
 		myspy_dev.tx_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
@@ -221,7 +222,7 @@ static int myspy_open(struct inode *inode, struct file *filp)
 			status = -ENOMEM;
 	}	
 
-	mutex_unlock(&myspy_dev.buf_lock);
+	up(&myspy_dev.sem);
 
 	return status;
 }
@@ -377,7 +378,7 @@ static int __init myspy_cdev_setup(void)
 static int __init myspy_init(void)
 {
 	spin_lock_init(&myspy_dev.spi_lock);
-	mutex_init(&myspy_dev.buf_lock);
+	sema_init(&myspy_dev.sem, 1);
 
 	if (myspy_cdev_setup() < 0) {
 		printk(KERN_ALERT "myspy_cdev_setup() failed\n");
@@ -405,10 +406,9 @@ fail_1:
 static void __exit myspy_exit(void)
 {
 	spi_unregister_driver(&myspy_spi);
+
 	cdev_del(&myspy_dev.cdev);
 	unregister_chrdev_region(myspy_dev.devt, 1);
-
-	mutex_lock(&myspy_dev.buf_lock);
 
 	if (myspy_dev.rx_buff)
 		kfree(myspy_dev.rx_buff);
@@ -418,8 +418,6 @@ static void __exit myspy_exit(void)
 
 	if (myspy_dev.user_buff)
 		kfree(myspy_dev.user_buff);
-
-	mutex_unlock(&myspy_dev.buf_lock);
 }
 
 module_init(myspy_init);
