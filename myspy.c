@@ -110,8 +110,7 @@ static ssize_t myspy_sync_write(size_t len)
 }
 
 /*
-  Implements a synchronous SPI operation. 
-  You special sauce goes here.
+  Invokes a synchronous duplex SPI operation. 
 
   I'm just playing with a I/O expander that implements a write before read
   protocol when you want to do reads. So when we want to read two bytes,
