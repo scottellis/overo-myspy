@@ -99,6 +99,10 @@ static ssize_t myspy_sync_write(size_t len)
 	t.rx_buf = myspy_dev.rx_buff;
 	t.len = len;
 
+	/* override the bus speed if needed */
+	if (myspy_dev.spi_device->max_speed_hz != bus_speed)
+		t.speed_hz = bus_speed;
+
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
 
