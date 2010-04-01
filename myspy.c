@@ -35,9 +35,15 @@
 #include <asm/uaccess.h>
 #include <linux/delay.h>
 
+#define DEFAULT_BUS_SPEED 3000000
+
+static int bus_speed = DEFAULT_BUS_SPEED;
+module_param(bus_speed, int, S_IRUGO);
+MODULE_PARM_DESC(bus_speed, "SPI bus speed in Hz");
+
 #define SPI_BUFF_SIZE 128
 
-struct myspy_data {
+struct myspy_dev {
 	dev_t devt;
 	struct cdev cdev;
 	spinlock_t spi_lock;
@@ -48,7 +54,7 @@ struct myspy_data {
 	char *user_buff;
 };
 
-static struct myspy_data myspy_data;
+static struct myspy_dev myspy_dev;
 
 
 static void myspy_complete(void *arg)
@@ -64,14 +70,14 @@ static ssize_t myspy_sync(struct spi_message *message)
 	message->complete = myspy_complete;
 	message->context = &done;
 
-	spin_lock_irq(&myspy_data.spi_lock);
+	spin_lock_irq(&myspy_dev.spi_lock);
 
-	if (myspy_data.spi_device == NULL)
+	if (myspy_dev.spi_device == NULL)
 		status = -ESHUTDOWN;
 	else
-		status = spi_async(myspy_data.spi_device, message);
+		status = spi_async(myspy_dev.spi_device, message);
 
-	spin_unlock_irq(&myspy_data.spi_lock);
+	spin_unlock_irq(&myspy_dev.spi_lock);
 
 	if (status == 0) {
 		wait_for_completion(&done);
@@ -89,8 +95,8 @@ static ssize_t myspy_sync_write(size_t len)
 	struct spi_transfer t;
 
 	memset(&t, 0, sizeof(struct spi_transfer));
-	t.tx_buf = myspy_data.tx_buff;
-	t.rx_buf = myspy_data.rx_buff;
+	t.tx_buf = myspy_dev.tx_buff;
+	t.rx_buf = myspy_dev.rx_buff;
 	t.len = len;
 
 	spi_message_init(&m);
@@ -113,64 +119,64 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 	if (count > 32)
 		return -EMSGSIZE;
 
-	mutex_lock(&myspy_data.buf_lock);
+	mutex_lock(&myspy_dev.buf_lock);
 
-	memset(myspy_data.user_buff, 0, SPI_BUFF_SIZE);
+	memset(myspy_dev.user_buff, 0, SPI_BUFF_SIZE);
 
-	if (copy_from_user(myspy_data.user_buff, buf, count)) {
-		mutex_unlock(&myspy_data.buf_lock);
+	if (copy_from_user(myspy_dev.user_buff, buf, count)) {
+		mutex_unlock(&myspy_dev.buf_lock);
 		return -EFAULT;
 	}
 
-	memset(myspy_data.tx_buff, 0, 16);
+	memset(myspy_dev.tx_buff, 0, 16);
 
 	/* initialize rx so we know if its valid */
-	memset(myspy_data.rx_buff, 0x33, 16);
+	memset(myspy_dev.rx_buff, 0x33, 16);
 
-	myspy_data.tx_buff[0] = DEVICE_ADDRESS << ADDRESS_SHIFT;
+	myspy_dev.tx_buff[0] = DEVICE_ADDRESS << ADDRESS_SHIFT;
 
-	if (!strncmp(myspy_data.user_buff, "read-config", strlen("read-config"))) {
-		myspy_data.tx_buff[0] |= READ_BIT;
-		myspy_data.tx_buff[1] = IODIRA;		
+	if (!strncmp(myspy_dev.user_buff, "read-config", strlen("read-config"))) {
+		myspy_dev.tx_buff[0] |= READ_BIT;
+		myspy_dev.tx_buff[1] = IODIRA;		
 		tx_len = 4;
 		rx_len = 2;
 	}
-	else if (!strncmp(myspy_data.user_buff, "set-config-out", strlen("set-config-out"))) {
-		myspy_data.tx_buff[1] = IODIRA;
-		myspy_data.tx_buff[2] = 0x00;
-		myspy_data.tx_buff[3] = 0x00;
+	else if (!strncmp(myspy_dev.user_buff, "set-config-out", strlen("set-config-out"))) {
+		myspy_dev.tx_buff[1] = IODIRA;
+		myspy_dev.tx_buff[2] = 0x00;
+		myspy_dev.tx_buff[3] = 0x00;
 		tx_len = 4;
 		rx_len = 0;
 	}
-	else if (!strncmp(myspy_data.user_buff, "set-config-in", strlen("set-config-in"))) {
-		myspy_data.tx_buff[1] = IODIRA;
-		myspy_data.tx_buff[2] = 0xff;
-		myspy_data.tx_buff[3] = 0xff;
+	else if (!strncmp(myspy_dev.user_buff, "set-config-in", strlen("set-config-in"))) {
+		myspy_dev.tx_buff[1] = IODIRA;
+		myspy_dev.tx_buff[2] = 0xff;
+		myspy_dev.tx_buff[3] = 0xff;
 		tx_len = 4;
 		rx_len = 0;
 	}
-	else if (!strncmp(myspy_data.user_buff, "read-io", strlen("read-io"))) {
-		myspy_data.tx_buff[0] |= READ_BIT;
-		myspy_data.tx_buff[1] = GPIOA;
+	else if (!strncmp(myspy_dev.user_buff, "read-io", strlen("read-io"))) {
+		myspy_dev.tx_buff[0] |= READ_BIT;
+		myspy_dev.tx_buff[1] = GPIOA;
 		tx_len = 4;
 		rx_len = 2;		
 	}
-	else if (!strncmp(myspy_data.user_buff, "write-io-on", strlen("write-io-on"))) {
-		myspy_data.tx_buff[1] = GPIOA;
-		myspy_data.tx_buff[2] = 0xff;
-		myspy_data.tx_buff[3] = 0xff;
+	else if (!strncmp(myspy_dev.user_buff, "write-io-on", strlen("write-io-on"))) {
+		myspy_dev.tx_buff[1] = GPIOA;
+		myspy_dev.tx_buff[2] = 0xff;
+		myspy_dev.tx_buff[3] = 0xff;
 		tx_len = 4;
 		rx_len = 0;		
 	}
-	else if (!strncmp(myspy_data.user_buff, "write-io-off", strlen("write-io-off"))) {
-		myspy_data.tx_buff[1] = GPIOA;
-		myspy_data.tx_buff[2] = 0x00;
-		myspy_data.tx_buff[3] = 0x00;
+	else if (!strncmp(myspy_dev.user_buff, "write-io-off", strlen("write-io-off"))) {
+		myspy_dev.tx_buff[1] = GPIOA;
+		myspy_dev.tx_buff[2] = 0x00;
+		myspy_dev.tx_buff[3] = 0x00;
 		tx_len = 4;
 		rx_len = 0;		
 	}
 	else {
-		printk(KERN_ALERT "Unknown command %s\n", myspy_data.user_buff);
+		printk(KERN_ALERT "Unknown command %s\n", myspy_dev.user_buff);
 		tx_len = 0;
 		rx_len = 0;
 	}
@@ -183,10 +189,10 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 		
 		if (rx_len > 0) 
 			printk(KERN_ALERT "rx_buff: %02X %02X\n",
-				myspy_data.rx_buff[2], myspy_data.rx_buff[3]);
+				myspy_dev.rx_buff[2], myspy_dev.rx_buff[3]);
 	}
 
-	mutex_unlock(&myspy_data.buf_lock);
+	mutex_unlock(&myspy_dev.buf_lock);
 
 	return count;
 }
@@ -195,38 +201,42 @@ static int myspy_open(struct inode *inode, struct file *filp)
 {	
 	int status = 0;
 
-	mutex_lock(&myspy_data.buf_lock);
+	mutex_lock(&myspy_dev.buf_lock);
 
-	if (!myspy_data.tx_buff) {
-		myspy_data.tx_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
-		if (!myspy_data.tx_buff) 
+	if (!myspy_dev.tx_buff) {
+		myspy_dev.tx_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
+		if (!myspy_dev.tx_buff) 
 			status = -ENOMEM;
 	}
 
-	if (!myspy_data.rx_buff) {
-		myspy_data.rx_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
-		if (!myspy_data.rx_buff) 
+	if (!myspy_dev.rx_buff) {
+		myspy_dev.rx_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
+		if (!myspy_dev.rx_buff) 
 			status = -ENOMEM;
 	}
 
-	if (!myspy_data.user_buff) {
-		myspy_data.user_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
-		if (!myspy_data.user_buff) 
+	if (!myspy_dev.user_buff) {
+		myspy_dev.user_buff = kmalloc(SPI_BUFF_SIZE, GFP_KERNEL);
+		if (!myspy_dev.user_buff) 
 			status = -ENOMEM;
 	}	
 
-	mutex_unlock(&myspy_data.buf_lock);
+	mutex_unlock(&myspy_dev.buf_lock);
 
 	return status;
 }
 
 static int myspy_probe(struct spi_device *spi_device)
 {
-	printk(KERN_ALERT "inside myspy_probe()\n");
-
-	myspy_data.spi_device = spi_device;
-	spi_set_drvdata(spi_device, &myspy_data);	
+	myspy_dev.spi_device = spi_device;
+	spi_set_drvdata(spi_device, &myspy_dev);	
 	
+	printk(KERN_ALERT 
+		"myspy_probe(): SPI[%d] max_speed_hz %d Hz  bus_speed %d Hz\n", 
+		spi_device->chip_select, 
+		spi_device->max_speed_hz, 
+		bus_speed);
+
 	return 0;
 }
 
@@ -234,10 +244,10 @@ static int myspy_remove(struct spi_device *spi_device)
 {
 	printk(KERN_ALERT "inside myspy_remove()\n");
 
-	spin_lock_irq(&myspy_data.spi_lock);
-	myspy_data.spi_device = NULL;
+	spin_lock_irq(&myspy_dev.spi_lock);
+	myspy_dev.spi_device = NULL;
 	spi_set_drvdata(spi_device, NULL);
-	spin_unlock_irq(&myspy_data.spi_lock);
+	spin_unlock_irq(&myspy_dev.spi_lock);
 
 	return 0;
 }
@@ -342,22 +352,22 @@ static int __init myspy_cdev_setup(void)
 {
 	int error;
 
-	myspy_data.devt = MKDEV(0, 0);
+	myspy_dev.devt = MKDEV(0, 0);
 
-	if ((error = alloc_chrdev_region(&myspy_data.devt, 0, 1, "myspy")) < 0) {
+	if ((error = alloc_chrdev_region(&myspy_dev.devt, 0, 1, "myspy")) < 0) {
 		printk(KERN_ALERT "alloc_chrdev_region() failed: error = %d \n", 
 			error);
 		return -1;
 	}
 
-	cdev_init(&myspy_data.cdev, &myspy_fops);
-	myspy_data.cdev.owner = THIS_MODULE;
-	myspy_data.cdev.ops = &myspy_fops;
+	cdev_init(&myspy_dev.cdev, &myspy_fops);
+	myspy_dev.cdev.owner = THIS_MODULE;
+	myspy_dev.cdev.ops = &myspy_fops;
 
-	error = cdev_add(&myspy_data.cdev, myspy_data.devt, 1);
+	error = cdev_add(&myspy_dev.cdev, myspy_dev.devt, 1);
 	if (error) {
 		printk(KERN_ALERT "cdev_add() failed: error = %d\n", error);
-		unregister_chrdev_region(myspy_data.devt, 1);
+		unregister_chrdev_region(myspy_dev.devt, 1);
 		return -1;
 	}	
 
@@ -366,8 +376,8 @@ static int __init myspy_cdev_setup(void)
 
 static int __init myspy_init(void)
 {
-	spin_lock_init(&myspy_data.spi_lock);
-	mutex_init(&myspy_data.buf_lock);
+	spin_lock_init(&myspy_dev.spi_lock);
+	mutex_init(&myspy_dev.buf_lock);
 
 	if (myspy_cdev_setup() < 0) {
 		printk(KERN_ALERT "myspy_cdev_setup() failed\n");
@@ -380,13 +390,13 @@ static int __init myspy_init(void)
 	}
 
 	printk(KERN_ALERT "Verify : mknod /dev/myspy c %d %d\n", 
-		MAJOR(myspy_data.devt), MINOR(myspy_data.devt));
+		MAJOR(myspy_dev.devt), MINOR(myspy_dev.devt));
 
 	return 0;
 
 fail_2:
-	cdev_del(&myspy_data.cdev);
-	unregister_chrdev_region(myspy_data.devt, 1);
+	cdev_del(&myspy_dev.cdev);
+	unregister_chrdev_region(myspy_dev.devt, 1);
 
 fail_1:
 	return -1;
@@ -395,21 +405,21 @@ fail_1:
 static void __exit myspy_exit(void)
 {
 	spi_unregister_driver(&myspy_spi);
-	cdev_del(&myspy_data.cdev);
-	unregister_chrdev_region(myspy_data.devt, 1);
+	cdev_del(&myspy_dev.cdev);
+	unregister_chrdev_region(myspy_dev.devt, 1);
 
-	mutex_lock(&myspy_data.buf_lock);
+	mutex_lock(&myspy_dev.buf_lock);
 
-	if (myspy_data.rx_buff)
-		kfree(myspy_data.rx_buff);
+	if (myspy_dev.rx_buff)
+		kfree(myspy_dev.rx_buff);
 
-	if (myspy_data.tx_buff)
-		kfree(myspy_data.tx_buff);
+	if (myspy_dev.tx_buff)
+		kfree(myspy_dev.tx_buff);
 
-	if (myspy_data.user_buff)
-		kfree(myspy_data.user_buff);
+	if (myspy_dev.user_buff)
+		kfree(myspy_dev.user_buff);
 
-	mutex_unlock(&myspy_data.buf_lock);
+	mutex_unlock(&myspy_dev.buf_lock);
 }
 
 module_init(myspy_init);
