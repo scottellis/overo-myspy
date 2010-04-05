@@ -294,7 +294,7 @@ static int __init add_myspy_to_bus(void)
 
 	spi_device = spi_alloc_device(spi_master);
 
-	if (spi_device) {
+	if (!spi_device) {
 		printk(KERN_ALERT "spi_alloc_device() failed\n");
 		status = -1;
 		goto add_myspy_done;
