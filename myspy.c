@@ -112,14 +112,14 @@ static ssize_t myspy_sync_write(size_t len)
 /*
   Invokes a synchronous duplex SPI operation. 
 
-  I'm just playing with a I/O expander that implements a write before read
+  I'm just playing with a I/O expander that implements a 'write before read'
   protocol when you want to do reads. So when we want to read two bytes,
   we actually have to clock 4 bytes, two bytes for the write to tell it
-  which register and two bytes to receive the data. 
+  which register and two bytes to receive 16 bits of data. 
   Writes to this device are straightforward.
 
-  If you are just using this code for reference, you'll want to replace 
-  everything   in this function with the logic for your own device.
+  If you are just using this code for reference, you probably want to replace 
+  everything in this function with the logic for your own device.
 */
 #define DEVICE_ADDRESS 0x20
 #define ADDRESS_SHIFT 0x01
@@ -130,7 +130,7 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 		size_t count, loff_t *f_pos)
 {
 	ssize_t	status;
-	int tx_len, rx_len;
+	int total_len, rx_len;
 	
 	if (count > 32)
 		return -EMSGSIZE;
@@ -156,7 +156,7 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 					strlen("read-config"))) {
 		myspy_dev.tx_buff[0] |= READ_BIT;
 		myspy_dev.tx_buff[1] = IODIRA;		
-		tx_len = 4;
+		total_len = 4;
 		rx_len = 2;
 	}
 	else if (!strncmp(myspy_dev.user_buff, "set-config-out", 
@@ -164,7 +164,7 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 		myspy_dev.tx_buff[1] = IODIRA;
 		myspy_dev.tx_buff[2] = 0x00;
 		myspy_dev.tx_buff[3] = 0x00;
-		tx_len = 4;
+		total_len = 4;
 		rx_len = 0;
 	}
 	else if (!strncmp(myspy_dev.user_buff, "set-config-in", 
@@ -172,14 +172,14 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 		myspy_dev.tx_buff[1] = IODIRA;
 		myspy_dev.tx_buff[2] = 0xff;
 		myspy_dev.tx_buff[3] = 0xff;
-		tx_len = 4;
+		total_len = 4;
 		rx_len = 0;
 	}
 	else if (!strncmp(myspy_dev.user_buff, "read-io", 
 					strlen("read-io"))) {
 		myspy_dev.tx_buff[0] |= READ_BIT;
 		myspy_dev.tx_buff[1] = GPIOA;
-		tx_len = 4;
+		total_len = 4;
 		rx_len = 2;		
 	}
 	else if (!strncmp(myspy_dev.user_buff, "write-io-on", 
@@ -187,7 +187,7 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 		myspy_dev.tx_buff[1] = GPIOA;
 		myspy_dev.tx_buff[2] = 0xff;
 		myspy_dev.tx_buff[3] = 0xff;
-		tx_len = 4;
+		total_len = 4;
 		rx_len = 0;		
 	}
 	else if (!strncmp(myspy_dev.user_buff, "write-io-off", 
@@ -195,23 +195,31 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 		myspy_dev.tx_buff[1] = GPIOA;
 		myspy_dev.tx_buff[2] = 0x00;
 		myspy_dev.tx_buff[3] = 0x00;
-		tx_len = 4;
+		total_len = 4;
 		rx_len = 0;		
 	}
 	else {
 		printk(KERN_ALERT "Unknown command %s\n", myspy_dev.user_buff);
-		tx_len = 0;
+		total_len = 0;
 		rx_len = 0;
 	}
 
-	if (tx_len > 0) {
-		status = myspy_sync_write(tx_len);
+	if (total_len > 0) {
+		status = myspy_sync_write(total_len);
 
-		if (status != tx_len) 
+		if (status != total_len) 
 			printk(KERN_ALERT "myspy_sync_write(%d) returned %d\n", 
-				tx_len, status);
+				total_len, status);
 		
 		if (rx_len > 0) 
+			/* 
+			For me when rx_len > 0 it's always rx_len = 2, so I 
+			just hard-coded it. In general, if you are working with
+			a device with a similar 'write before read' protocol 
+			like this one, the first returned byte is at 
+			rx_buff[total_len - rx_len] and the last is at 
+			rx_buff[total_len - 1].
+			*/
 			printk(KERN_ALERT "rx_buff: %02X %02X\n",
 				myspy_dev.rx_buff[2], myspy_dev.rx_buff[3]);
 	}
