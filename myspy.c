@@ -224,6 +224,8 @@ static ssize_t myspy_write(struct file *filp, const char __user *buf,
 				myspy_dev.rx_buff[2], myspy_dev.rx_buff[3]);
 	}
 
+	*f_pos += count;
+
 	up(&myspy_dev.sem);
 
 	return count;
