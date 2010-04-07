@@ -22,6 +22,9 @@ Gumstix Overo.
    the OE cross-tools. You might have to change the KERNELDIR var. After that
    the Makefile should just work. 
 
+7. Do a global search and replace of 'myspy' in myspy.c and the Makefile
+   and then rename myspy.c to <your-name>.c. That should get it working with
+   a better name for your device.
 
 I did some testing with bigger frames, greater then 7 which triggers the
 DMA code in omap2_mcspi rather then the PIO mode. I always get errors from
