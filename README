@@ -18,9 +18,10 @@ Gumstix Overo.
 5. You'll need the patches to omap2_mcspi included in the project or
    the dynamic adding of the myspy spi device will fail.  
 
-6. If you don't have a build environment setup, use the source-me.txt to use
-   the OE cross-tools. You might have to change the KERNELDIR var. After that
-   the Makefile should just work. 
+   Update: These patches got accepted into 2.6.34 mainline.
+
+6. If you don't have a build environment setup, use the overo-source-me.txt 
+   to use the OE cross-tools. After that the Makefile should just work. 
 
 7. Do a global search and replace of 'myspy' in myspy.c and the Makefile
    and then rename myspy.c to <your-name>.c. That should get it working with
