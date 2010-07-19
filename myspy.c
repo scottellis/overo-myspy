@@ -34,7 +34,7 @@
 #include <asm/uaccess.h>
 #include <linux/delay.h>
 
-#define DEFAULT_BUS_SPEED 3000000
+#define DEFAULT_BUS_SPEED 100000
 
 static int bus_speed = DEFAULT_BUS_SPEED;
 module_param(bus_speed, int, S_IRUGO);
@@ -93,6 +93,12 @@ static ssize_t myspy_sync_write(size_t len)
 {
 	struct spi_message m;
 	struct spi_transfer t;
+
+	if (!myspy_dev.spi_device) {
+		printk(KERN_ALERT "No spi_device in myspy_sync_write()!\n");
+		printk(KERN_ALERT "Was myspy_probe() ever called?\n");
+		return -1;
+	}
 
 	memset(&t, 0, sizeof(struct spi_transfer));
 	t.tx_buf = myspy_dev.tx_buff;
@@ -325,6 +331,7 @@ static int __init add_myspy_to_bus(void)
 		*/
 		spi_dev_put(spi_device);
 		status = 0;
+		printk(KERN_ALERT "Found device %s already registered\n", buff);
 	} else {
 		spi_device->max_speed_hz = 100000;
 		spi_device->mode = SPI_MODE_0;
