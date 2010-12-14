@@ -40,6 +40,8 @@ static int bus_speed = DEFAULT_BUS_SPEED;
 module_param(bus_speed, int, S_IRUGO);
 MODULE_PARM_DESC(bus_speed, "SPI bus speed in Hz");
 
+const char this_driver_name[] = "myspy";
+
 #define SPI_BUFF_SIZE 128
 
 struct myspy_dev {
@@ -301,7 +303,6 @@ static int __init add_myspy_to_bus(void)
 	char buff[64];
 
 	spi_master = spi_busnum_to_master(1);
-
 	if (!spi_master) {
 		printk(KERN_ALERT "spi_busnum_to_master(1) returned NULL\n");
 		printk(KERN_ALERT "Missing modprobe omap2_mcspi?\n");
@@ -309,29 +310,35 @@ static int __init add_myspy_to_bus(void)
 	}
 
 	spi_device = spi_alloc_device(spi_master);
-
 	if (!spi_device) {
+		put_device(&spi_master->dev);
 		printk(KERN_ALERT "spi_alloc_device() failed\n");
-		status = -1;
-		goto add_myspy_done;
+		return -1;
 	}
 
 	/* choose your chip select */
 	spi_device->chip_select = 0;
 
-	/* first check if the bus already knows about us */
-	snprintf(buff, sizeof(buff), "%s.%u", dev_name(&spi_device->master->dev),
+	/* Check whether this SPI bus.cs is already claimed */
+	snprintf(buff, sizeof(buff), "%s.%u", 
+			dev_name(&spi_device->master->dev),
 			spi_device->chip_select);
 
 	if (bus_find_device_by_name(spi_device->dev.bus, NULL, buff)) {
-		/* 
-		We are already registered, nothing to do, just free
-		the spi_device. Crashes without a patched 
-		omap2_mcspi_cleanup() 
-		*/
+		/* We are not going to use this spi_device, so free it */ 
 		spi_dev_put(spi_device);
-		status = 0;
-		printk(KERN_ALERT "Found device %s already registered\n", buff);
+		
+		/* 
+		 * There is already a device configured for this bus.cs  
+		 * It is okay if it us, otherwise complain and fail.
+		 */
+		if (pdev->driver && pdev->driver->name && 
+				strcmp(this_driver_name, pdev->driver->name)) {
+			printk(KERN_ALERT 
+				"Driver [%s] already registered for %s\n",
+				pdev->driver->name, buff);
+			status = -1;
+		} 
 	} else {
 		spi_device->max_speed_hz = 100000;
 		spi_device->mode = SPI_MODE_0;
@@ -339,17 +346,16 @@ static int __init add_myspy_to_bus(void)
 		spi_device->irq = -1;
 		spi_device->controller_state = NULL;
 		spi_device->controller_data = NULL;
-		strlcpy(spi_device->modalias, "myspy", SPI_NAME_SIZE);
+		strlcpy(spi_device->modalias, this_driver_name, SPI_NAME_SIZE);
 
 		status = spi_add_device(spi_device);
 		if (status < 0) {	
 			/* crashes without a patched omap2_mcspi_cleanup() */	
 			spi_dev_put(spi_device);
-			printk(KERN_ALERT "spi_add_device() failed: %d\n", status);		
+			printk(KERN_ALERT "spi_add_device() failed: %d\n", 
+					status);		
 		}	
 	}
-
-add_myspy_done:
 
 	put_device(&spi_master->dev);
 
@@ -358,7 +364,7 @@ add_myspy_done:
 
 static struct spi_driver myspy_spi = {
 	.driver = {
-		.name =		"myspy",
+		.name =		this_driver_name,
 		.owner =	THIS_MODULE,
 	},
 	.probe =	myspy_probe,
@@ -397,7 +403,7 @@ static int __init myspy_init_cdev(void)
 
 	myspy_dev.devt = MKDEV(0, 0);
 
-	error = alloc_chrdev_region(&myspy_dev.devt, 0, 1, "myspy");
+	error = alloc_chrdev_region(&myspy_dev.devt, 0, 1, this_driver_name);
 	if (error < 0) {
 		printk(KERN_ALERT "alloc_chrdev_region() failed: %d \n", 
 			error);
@@ -419,15 +425,17 @@ static int __init myspy_init_cdev(void)
 
 static int __init myspy_init_class(void)
 {
-	myspy_dev.class = class_create(THIS_MODULE, "myspy");
+	myspy_dev.class = class_create(THIS_MODULE, this_driver_name);
 
 	if (!myspy_dev.class) {
 		printk(KERN_ALERT "class_create() failed\n");
 		return -1;
 	}
 
-	if (!device_create(myspy_dev.class, NULL, myspy_dev.devt, NULL, "myspy")) {
-		printk(KERN_ALERT "device_create(..., myspy) failed\n");
+	if (!device_create(myspy_dev.class, NULL, myspy_dev.devt, NULL, 
+			this_driver_name)) {
+		printk(KERN_ALERT "device_create(..., %s) failed\n",
+			this_driver_name);
 		class_destroy(myspy_dev.class);
 		return -1;
 	}
