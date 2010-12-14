@@ -299,6 +299,7 @@ static int __init add_myspy_to_bus(void)
 {
 	struct spi_master *spi_master;
 	struct spi_device *spi_device;
+	struct device *pdev;
 	int status;
 	char buff[64];
 
@@ -324,7 +325,8 @@ static int __init add_myspy_to_bus(void)
 			dev_name(&spi_device->master->dev),
 			spi_device->chip_select);
 
-	if (bus_find_device_by_name(spi_device->dev.bus, NULL, buff)) {
+	pdev = bus_find_device_by_name(spi_device->dev.bus, NULL, buff);
+ 	if (pdev) {
 		/* We are not going to use this spi_device, so free it */ 
 		spi_dev_put(spi_device);
 		
